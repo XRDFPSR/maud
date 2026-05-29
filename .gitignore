@@ -21,3 +21,9 @@ print.xml
 ui.inf.xml
 usageView.xml
 web-browsers.xml
+# Test run outputs (generated)
+test_run/*.txt
+test_run/*.ins
+test_run/*.bat
+test_run/*.ps1
+test_run/*.lst
