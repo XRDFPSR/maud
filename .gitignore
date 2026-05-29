@@ -27,3 +27,9 @@ test_run/*.ins
 test_run/*.bat
 test_run/*.ps1
 test_run/*.lst
+
+# MAUD runtime (pre-built binaries)
+maud_runtime/
+*.pyc
+__pycache__/
+.ant_maud_v2.properties
