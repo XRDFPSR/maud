@@ -1,309 +1,342 @@
-# MAUD — Materials Analysis Using Diffraction
+# MAUD-MCP 🧪🤖
 
-**MAUD** is an open-source Java application for the combined analysis of materials using diffraction and spectroscopic techniques. Developed primarily at the **University of Trento** by **Luca Lutterotti**, it extends the Rietveld method into a unified framework capable of simultaneously refining multiple types of experimental data to extract comprehensive materials information.
+**AI-Agent-Friendly MCP Server for MAUD — Combined Analysis of Diffraction Data**
 
-> Current version: **2.99995** (pre-3.0, `version2` branch) — Licensed under **BSD 3-Clause**
+[![License](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)]()
+[![MCP Protocol](https://img.shields.io/badge/MCP-1.0+-green.svg)](https://modelcontextprotocol.io)
+[![Java 21+](https://img.shields.io/badge/Java-21+-orange.svg)]()
 
----
+MAUD-MCP 将强大的衍射组合分析软件 [MAUD](https://github.com/luttero/maud) 封装为标准的 **MCP (Model Context Protocol)** 服务器，使 AI 智能体（Claude、Copilot、Cursor 等）和自动化工作流可以直接调用 Rietveld 精修、物相分析、织构分析、应力分析等全部功能。
 
-## What MAUD Can Do
-
-MAUD performs **Combined Analysis** — the simultaneous refinement of diffraction, fluorescence, and reflectivity data using a single structural model. It can determine:
-
-| Category | What It Determines |
-|---|---|
-| **Crystal Structure** | Lattice parameters, atomic positions, site occupancies, thermal factors |
-| **Microstructure** | Crystallite size, microstrain distributions, planar defects (stacking faults, twinning), dislocation densities |
-| **Texture (ODF)** | Crystallographic texture via WIMV, EWIMV, harmonic, standard functions (fiber/spherical components), MTEX integration |
-| **Residual Stress** | Macroscopic stress tensors, triaxial stress, EPSC elasto-plastic self-consistent modeling |
-| **Phase Quantification** | Weight/volume fractions of crystalline and amorphous phases |
-| **Chemical Composition** | Elemental analysis via X-ray fluorescence (XRF) including quantitative EDXRF and TXRF |
-| **Reflectivity (XRR)** | Thin-film thickness, density, roughness via Parrat recursive method or matrix method |
-| **Structure Solution** | *Ab initio* structure determination via Genetic Algorithm, Simulated Annealing, Reverse Monte Carlo, Charge Flipping (Superflip), Maximum Entropy Method (MEM) |
-| **Pair Distribution Function** | PDF export for local structure analysis |
-| **Electron Density Maps** | 3D Fourier / MEM electron density reconstruction |
-
-### Supported Radiation Sources
-
-- **X-ray** — lab tubes (Cu, Co, Cr, Mo, Fe, Ag, Ga, etc.), synchrotron, energy-dispersive
-- **Neutron** — constant-wavelength (ILL D1B, D20, D19) and Time-of-Flight (LANSCE/HIPPO, ISIS GEM, IPNS)
-- **Electron** — kinematical and dynamical (2-beam approximation) diffraction
-
-### Supported Geometries
-
-Bragg-Brentano, Debye-Scherrer, flat image plate (transmission/reflection/inclined), curved position-sensitive detectors (INEL CPS120/590), TOF multi-bank (HIPPO, GEM), Laue transmission, reflectivity, and more.
-
-### Over 60 Data File Formats
-
-Including Bruker/Siemens UXD/RAW, Philips XRDML, Rigaku, GSAS, FullProf, Dubna SKAT, TIFF images, CIF, HDF5, D1B/D20/D19 ILL, HIPPO, INEL, MDI, LCLS2, KCD/SYN (Nonius Kappa), stress rig data, and many others.
+MAUD-MCP wraps the powerful combined diffraction analysis engine [MAUD](https://github.com/luttero/maud) (Materials Analysis Using Diffraction) as a standard **MCP (Model Context Protocol)** server, enabling AI agents and automated workflows to directly invoke Rietveld refinement, phase analysis, texture analysis, stress analysis, and more.
 
 ---
 
-## Project Architecture
+## 项目目的 / Purpose
+
+本仓库是 **MAUD 的 fork + MCP 包装**，在保持与上游 [luttero/maud](https://github.com/luttero/maud) 同步的基础上增加了 Python MCP 接口层。
+
+This repository is a **MAUD fork + MCP wrapper** that adds a Python MCP interface layer on top of the upstream MAUD engine.
+
+| 特性 | 说明 |
+|------|------|
+| 🧩 **MCP 协议服务** | 通过 stdio 将 15+ MAUD 操作暴露为 MCP 工具 |
+| 🤖 **AI 智能体接口** | AI 可直接加载数据、创建精修参数、执行计算、解析结果 |
+| ☕ **Java 桥接** | 通过 subprocess 调用 MAUD.jar，无需修改 Java 源码 |
+| ⚙️ **Headless 运行** | 无需 MAUD GUI，纯命令行操作 |
+| 📄 **PAR 文件编辑** | 完整 .par CIF 格式读写、环路解析、约束编辑 |
+| 🧪 **完整测试覆盖** | 64 个 Python 测试全部通过 |
+| 🔍 **智能诊断** | 自动精修质量评估 + 参数推荐 + 报告生成 |
+
+**本仓库的 Python 层 (`src/maud_mcp/`) 是 MCP 服务器核心。** Java 运行时需要独立的 `maud.jar`（预编译或自编译）。
 
 ```
-maud/
-├── src/
-│   ├── com/radiographema/          # Entry points
-│   │   ├── Maud.java               # Main application class (GUI mode)
-│   │   ├── MaudText.java           # Headless/batch mode
-│   │   ├── MaudWebStart.java       # Java Web Start launcher
-│   │   ├── Maudette.java           # Lightweight version
-│   │   ├── tools/                  # Batch processing tools, QTA utilities
-│   │   └── fpsm/                   # FPSM native library bindings
-│   │
-│   ├── it/unitn/ing/rista/         # CORE ENGINE (~80% of codebase)
-│   │   ├── diffr/                  # **Diffraction models — the heart of MAUD**
-│   │   │   ├── Phase.java          # Phase definition & computation
-│   │   │   ├── Sample.java         # Sample assembly
-│   │   │   ├── Instrument.java     # Instrument definition
-│   │   │   ├── Measurement.java    # Measurement types (θ-2θ, TOF, EDX, XRR...)
-│   │   │   ├── Diffraction.java    # Core diffraction computation engine
-│   │   │   ├── Fluorescence.java   # XRF computation
-│   │   │   ├── Reflectivity.java   # XRR computation
-│   │   │   ├── Absorption.java     # Absorption correction
-│   │   │   ├── Texture.java        # Texture model orchestration
-│   │   │   ├── Stress.java / Strain.java  # Residual stress analysis
-│   │   │   ├── StructureFactor.java       # Fhkl computation
-│   │   │   ├── SizeStrainModel.java       # Microstructure broadening
-│   │   │   ├── PlanarDefects.java         # Stacking faults, twinning
-│   │   │   ├── PoleFigure.java            # Pole figure computation
-│   │   │   ├── XRDcat.java / Parameter.java  # Analysis file format (.par)
-│   │   │   │
-│   │   │   ├── data/               # ~60+ data file format readers
-│   │   │   ├── cal/                # ~30+ angular/intensity calibration models
-│   │   │   ├── geometry/           # Diffractometer geometry models
-│   │   │   ├── detector/           # Detector types
-│   │   │   ├── radiation/          # X-ray, neutron, electron radiation sources
-│   │   │   ├── rta/                # Texture analysis (WIMV, EWIMV, harmonic, MTEX...)
-│   │   │   ├── rsa/                # Residual stress & EPSC modeling
-│   │   │   ├── sizestrain/         # Crystallite size & microstrain models
-│   │   │   ├── sdpd/               # Structure solution (GA, SA, Superflip, MEM...)
-│   │   │   ├── sfm/                # Structure factor models (Le Bail, Pawley, Rietveld...)
-│   │   │   ├── reflectivity/       # XRR models (Parrat, matrix, GA fitting)
-│   │   │   ├── fluorescence/       # XRF quantitative models
-│   │   │   ├── forcefield/         # DFT (ABINIT), LJ, bond distance/angle restraints
-│   │   │   ├── magnetic/           # Magnetic structure models
-│   │   │   └── shape/              # Sample shape absorption correction
-│   │   │
-│   │   ├── comp/                   # Optimization algorithms
-│   │   │   ├── MarqardLeastSquares.java    # Marquardt-Levenberg
-│   │   │   ├── SimulatedAnnealingRefinement.java
-│   │   │   ├── GeneticAlgorithmRefinement.java
-│   │   │   ├── MonteCarloAlgorithmRefinement.java
-│   │   │   ├── NelderMeadSimplex.java
-│   │   │   └── MetaDynamicsSearch.java
-│   │   │
-│   │   ├── awt/                    # Java Swing GUI (Maud's extensive UI)
-│   │   │   ├── mainFrame.java
-│   │   │   ├── DiffractionMainFrame.java
-│   │   │   └── treetable/          # Custom tree-table parameter editor
-│   │   │
-│   │   ├── render3d/               # OpenGL 3D rendering (JOGL/GL4Java)
-│   │   │   ├── Structure3Djgl.java
-│   │   │   ├── Crystallite3Djgl.java
-│   │   │   ├── PoleRendering3Djgl.java
-│   │   │   └── MapRendering3Djgl.java
-│   │   │
-│   │   ├── util/                   # Math, crystallography, I/O utilities
-│   │   ├── io/                     # CIF parser, COD database, XML, JSON
-│   │   ├── chemistry/              # Periodic table, X-ray scattering factors
-│   │   ├── jpvm/                   # Parallel computation (PVM-like)
-│   │   ├── neuralnetwork/          # ANN for spectrum recognition & indexing
-│   │   └── ...
-│   │
-│   ├── it/unitn/ing/wizard/        # Guided wizards
-│   │   ├── HIPPOWizard/            # HIPPO (LANSCE) TOF instrument wizard
-│   │   ├── LCLS2Wizard/            # LCLS (XFEL) image wizard
-│   │   └── LoskoWizard/            # Losko detector wizard
-│   │
-│   ├── it/unitn/ing/jgraph/        # Plotting library (Graph2D)
-│   ├── it/unitn/ing/jsginfo/       # Space group symmetry (sginfo)
-│   ├── it/unitn/ing/fortran/       # Fortran-style formatted I/O
-│   │
-│   ├── maud_mcp/                   # 🆕 Python AI Agent toolkit
-│   │   ├── core/
-│   │   │   ├── java_bridge.py      # Java subprocess bridge
-│   │   │   ├── par_editor.py       # .par file editor
-│   │   │   ├── data_manager.py     # Data file management
-│   │   │   └── result_parser.py    # Refinement result parser
-│   │   ├── server/
-│   │   │   └── mcp_server.py       # MCP Server / REST API
-│   │   ├── ai/
-│   │   │   ├── diagnostics.py      # AI-powered analysis diagnostics
-│   │   │   ├── params.py           # Parameter suggestion
-│   │   │   └── reporter.py         # Automated report generation
-│   │   ├── config.py               # Configuration management
-│   │   ├── tests/                  # Unit tests
-│   │   └── _legacy/                # Legacy MCP implementation
-│   │
-│   ├── org/la4j/                   # Linear algebra library
-│   ├── gov/lanl/epsc4/             # EPSC4 elasto-plastic modeling
-│   ├── gov/noaa/pmel/sgt/          # Scientific Graphics Toolkit
-│   ├── Jama/                       # Matrix algebra (SVD, Eigen, Cholesky...)
-│   ├── com/jtex/qta/               # Quantitative Texture Analysis (Beartex-compatible)
-│   ├── HTTPClient/                 # HTTP client library
-│   │
-│   ├── help/                       # User documentation
-│   ├── images/                     # Icons and images
-│   ├── examples/                   # Example analysis files (.par, .raw, .cif)
-│   └── files/                      # Default resources (xraydata.db, CIF databases...)
-│
-├── libs/current/                   # Dependencies (ij.jar, colt.jar, jogl, xraylib...)
-├── libs/ant-libs/                  # Ant build helpers (Mac app bundler)
-├── build.xml                       # Apache Ant build script
-├── ant_maud_v2.properties          # Build configuration template
-├── Compile.md                      # Build & compile guide
-├── LICENSE                         # BSD 3-Clause
-└── ImageJ/                         # ImageJ plugins for image processing
+AI Agent (Claude/Copilot)
+        │ MCP stdio
+        ▼
+┌───────────────────────┐     subprocess     ┌───────────────────────┐
+│   src/maud_mcp/       │ ─────────────────→  │  MAUD.jar (Java)     │
+│   (MCP 协议 + 桥接)    │                    │  (Rietveld 引擎)      │
+└───────────────────────┘                    └───────────────────────┘
 ```
 
 ---
 
-## Quick Start
+## 代码结构 / Code Structure
 
-### Pre-built Binary
+```
+MAUD-MCP/
+├── src/                                    # MCP 服务器 & MAUD 源码
+│   ├── com/radiographema/                  # 🟨 MAUD Java 源码 (上游)
+│   │   ├── Maud.java                       #    GUI 入口
+│   │   ├── MaudText.java                   #    命令行模式
+│   │   └── ...                             #    1000+ Java 类
+│   └── maud_mcp/                           # 💚 MCP 服务器 (本 fork 新增)
+│       ├── __init__.py                     #    版本声明
+│       ├── __main__.py                     #    CLI: status/validate/test-ins/server
+│       ├── config.py                       #    MAUD 自动检测 + Java/JAR 路径
+│       ├── exceptions.py                   #    自定义异常
+│       ├── core/                           #    核心引擎
+│       │   ├── java_bridge.py              #    ☕ Java subprocess 桥接
+│       │   ├── par_editor.py               #    📄 .par CIF 文件读写器
+│       │   ├── data_manager.py             #    🔄 数据格式转换 + CIF 解析
+│       │   └── result_parser.py            #    📊 精修结果解析 (Rwp/GOF/晶胞)
+│       ├── server/                         #    MCP 协议层
+│       │   └── mcp_server.py               #    12+ MCP 工具
+│       ├── ai/                             #    🤖 AI 增强
+│       │   ├── params.py                   #    参数推荐
+│       │   ├── diagnostics.py              #    智能诊断
+│       │   └── reporter.py                 #    报告生成
+│       ├── tests/                          #    🧪 测试套件
+│       │   ├── test_java_bridge.py         #    7 tests
+│       │   ├── test_par_editor.py          #    20 tests
+│       │   ├── test_result_parser.py       #    12 tests
+│       │   ├── test_data_manager.py        #    6 tests
+│       │   ├── test_mcp_server.py          #    11 tests
+│       │   ├── test_ai_modules.py          #    8 tests
+│       │   └── data/                       #    测试数据
+│       └── _legacy/                        #    旧代码备份
+├── maud_runtime/                           # ⚡ MAUD 运行时
+│   ├── lib/Maud.jar                        #    预编译 v2.99993 (14MB)
+│   ├── lib/*.jar                           #    35 个依赖 JAR
+│   └── scripts/                            #    启动脚本
+├── build.xml                               # 🏗️ Ant 构建配置
+├── Maud.iml / Maud.ipr                     #    IntelliJ IDEA 项目
+└── maud_runtime/                           #    运行时目录
+```
 
-Download the latest installer from the [MAUD website](http://maud.radiographema.com/) for Windows, macOS, or Linux.
+### 模块依赖关系 / Module Dependencies
 
-### Building from Source
+```
+maud_mcp (Python MCP Server)
+    │
+    ├── core/java_bridge.py    — subprocess 调用 MAUD.jar
+    ├── core/par_editor.py     — 解析/编辑 .par (CIF 格式) 参数文件
+    ├── core/data_manager.py   — 衍射数据格式转换 + CIF 解析
+    ├── core/result_parser.py  — 解析 MAUD stdout + .par 结果
+    ├── server/mcp_server.py   — FastMCP 服务器 (12+ tools)
+    └── ai/                    — 参数推荐、诊断、报告
+```
 
-**Requirements:**
-- JDK 21+ (Oracle JDK or OpenJDK/Zulu)
-- Apache Ant
-- IntelliJ IDEA (recommended for development)
+---
+
+## 编译与安装 / Installation
+
+### 前置条件 / Prerequisites
+
+| 依赖 | 用途 | 安装方式 |
+|------|------|----------|
+| **Java 21+** | 运行 MAUD 引擎 | Adoptium Temurin: `wget ...` |
+| **Python 3.10+** | MCP 服务器 | `apt install python3.11` |
+| Python 包 | MCP/numpy/scipy | `pip install -r requirements.txt` |
+| **MAUD.jar** | Rietveld 精修引擎 | 预编译或 Ant 构建 |
+
+### 1️⃣ 安装 Python 依赖
 
 ```bash
-# 1. Configure build
-cp ant_maud_v2.properties ~/.ant_maud_v2.properties
-# Edit the file:
-#   - Set JAVA_HOME (JDK location)
-#   - Set openjdk (OpenJDK location for bundled JRE builds)
-#   - Set build (output directory)
-#   - Set installerDir
+git clone https://github.com/XRDFPSR/MAUD-MCP.git
+cd MAUD-MCP
 
-# 2. Create build number file
-mkdir build_numbers
-touch build_numbers/Maud_full_build.number
-
-# 3. Build via Ant
-ant -f build.xml compile_open   # Compile only
-ant -f build.xml build_full     # Build full installer
+# Python 依赖
+pip install mcp>=1.0 numpy scipy PyCifRW
 ```
 
-See `Compile.md` for detailed instructions (by S. Merkel & L. Lutterotti, July 2024).
+### 2️⃣ 安装 Java 21 运行时
+
+```bash
+# Adoptium Temurin JDK 21
+wget -qO- https://github.com/adoptium/temurin21-binaries/releases/latest/download/OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz | tar xz
+export JAVA_HOME=$(pwd)/jdk-21.0.6+7
+export PATH=$JAVA_HOME/bin:$PATH
+
+# 验证
+java -version
+# → openjdk version "21.0.6" ...
+```
+
+### 3️⃣ 获取 MAUD.jar
+
+```bash
+# 方式 A：下载预编译包
+wget https://github.com/luttero/maud/releases/download/v2.99993/maud.zip
+unzip maud.zip -d maud_runtime/
+
+# 方式 B：自行编译 (需要 Apache Ant + JDK)
+ant -buildfile build.xml jar
+cp build/Maud.jar maud_runtime/lib/
+```
+
+### 4️⃣ 验证安装
+
+```bash
+python -m src.maud_mcp
+```
+
+正常输出示例：
+```
+=== MAUD 引擎状态 ===
+  状态:      ✅ ready
+  Maud.jar:  /path/to/MAUD-MCP/maud_runtime/lib/Maud.jar
+  存在:      ✅
+  Java:      /path/to/jdk-21.0.6+7/bin/java
+  存在:      ✅
+  版本:      21.0.6
+  平台:      Linux
+```
+
+### 5️⃣ 运行最小测试
+
+```bash
+python -m src.maud_mcp --test-ins
+# → ✅ INS 执行成功
+```
 
 ---
 
-## maud_mcp — Python AI Agent Interface
+## MCP 服务器使用 / MCP Server Usage
 
-The `src/maud_mcp/` package provides a Python interface for AI Agents (LLMs) to interact with MAUD programmatically:
+### 启动服务器
+
+```bash
+# stdio 模式 (默认，用于 Claude Desktop / Cursor)
+python -m src.maud_mcp --server
+```
+
+### MCP 宿主配置 / Claude Desktop Config
+
+```json
+{
+  "mcpServers": {
+    "maud-mcp": {
+      "command": "python3",
+      "args": ["-m", "src.maud_mcp", "--server"],
+      "cwd": "/path/to/MAUD-MCP"
+    }
+  }
+}
+```
+
+### MCP 工具清单 (12+ 个)
+
+| 类别 | 工具 | 功能 |
+|------|------|------|
+| **系统** | `get_status` | 获取 MAUD 引擎状态、Java 版本、JAR 路径 |
+| **数据** | `load_data` | 加载衍射数据并返回摘要 (点数、范围、格式) |
+| | `convert_data` | 转换数据文件格式 (→ .xye / .dat / .raw) |
+| | `data_stats` | 数据统计直方图 |
+| **PAR 编辑** | `read_par` | 读取 .par 文件，返回 CIF 结构化 JSON |
+| | `edit_par` | 修改 .par 参数 (晶胞、原子、迭代次数、标题) |
+| | `import_cif` | 从 CIF 生成 .par 文件 |
+| | `generate_ins` | 从数据 + CIF 自动生成 INS 控制文件 |
+| **精修** | `refine` | 执行 MAUD Rietveld 精修 |
+| | `compute` | 执行模拟计算 (0 次迭代) |
+| | `get_results` | 解析精修结果 (Rwp, GOF, 晶胞参数) |
+| | `batch_refine` | 批量多参数组合精修 |
+| **AI** | `auto_diagnose` | 自动诊断 + 修复建议 |
+| | `suggest_best_strategy` | 推荐增量精修策略 |
+| | `generate_report` | 生成精修报告 (Markdown/HTML/JSON) |
+
+### 快速功能测试
 
 ```python
-from maud_mcp.core.java_bridge import JavaBridge
+import sys, os
+sys.path.insert(0, "/path/to/MAUD-MCP/src")
 
+from maud_mcp.core.java_bridge import JavaBridge
 bridge = JavaBridge()
 status = bridge.get_status()
+print(f"MAUD ready: {status['status']}")
 
-# Load an analysis, run refinement, get results
-bridge.load_analysis("my_sample.par")
-result = bridge.run_refinement()
-report = bridge.get_refinement_report()
+# 运行一个简单的 INS 控制文件
+result = bridge.run_ins("""
+_riet_analysis_iteration_number  0
+""")
+print(f"SUCCESS: {result.success}")
 ```
 
-**Key modules:**
-- **`java_bridge.py`** — Manages MAUD as a Java subprocess with full lifecycle control
-- **`par_editor.py`** — Read/write/modify `.par` analysis files
-- **`data_manager.py`** — Handle data file loading and format detection
-- **`result_parser.py`** — Parse refinement output (Rwp, GoF, phase fractions, cell params...)
-- **`mcp_server.py`** — MCP (Model Context Protocol) server for AI agent integration
-- **`ai/diagnostics.py`** — Automated analysis quality assessment
-- **`ai/reporter.py`** — Generate human-readable analysis reports
+---
 
-**Configuration** (environment variables):
-| Variable | Default | Description |
-|---|---|---|
-| `MAUD_HOME` | auto-detect | MAUD installation directory |
-| `MAUD_JAVA_HOME` | `JAVA_HOME` | JDK installation |
-| `MAUD_WORK_DIR` | `/tmp/maud_work` | Working directory for temp files |
-| `MAUD_MAX_MEM` | `2g` | Java heap size |
-| `MAUD_TIMEOUT` | `180` | Refinement timeout (seconds) |
+## MAUD 能力概述 / MAUD Capabilities
+
+MAUD (Materials Analysis Using Diffraction) 是一款开源的 Java 衍射组合分析软件，由 **Luca Lutterotti**（特伦托大学）开发。
+
+### 支持的分析类型
+
+| 类别 | 可确定参数 |
+|------|-----------|
+| **晶体结构** | 晶格参数、原子坐标、占位率、温度因子 |
+| **微观结构** | 晶粒尺寸、微应变分布、层错、位错密度 |
+| **织构 (ODF)** | WIMV/EWIMV/谐波/标准函数法, MTEX 集成 |
+| **残余应力** | 宏观应力张量、三轴应力、EPSC 模型 |
+| **物相定量** | 晶相 + 非晶相质量/体积分数 |
+| **化学组成** | XRF/EDXRF/TXRF 元素分析 |
+| **反射率** | 薄膜厚度、密度、粗糙度 (Parrat / 矩阵法) |
+| **结构解析** | 遗传算法、模拟退火、反蒙特卡洛、Charge Flipping |
+| **PDF** | 对分布函数导出 |
+| **电子密度图** | 3D Fourier / MEM 重构 |
+
+### 支持的辐射源
+
+X 射线 (Cu/Co/Cr/Mo/Fe/Ag/Ga...)，同步辐射，中子 (恒定波长 ILL / TOF LANSCE/HIPPO/ISIS GEM)，电子衍射
+
+### 支持的几何
+
+Bragg-Brentano, Debye-Scherrer, 平板 IP, CPS 探测器, TOF 多 bank, Laue 透射, 反射率
+
+### 60+ 数据格式
+
+Bruker/Siemens UXD/RAW, Philips XRDML, Rigaku, GSAS, FullProf, CIF, TIFF, HDF5, ILL D1B/D20/D19, HIPPO, INEL, MDI 等
 
 ---
 
-## Key Features
+## 本 Fork 的变更 / Changes vs Upstream
 
-### Refinement Algorithms
-- **Marquardt Least Squares** (primary) — with Cholesky decomposition, weighting schemes (Q-space, log, sqrt)
-- **Genetic Algorithm** — global optimization for indexing, structure solution
-- **Hybrid GA + Least Squares** — best of both worlds
-- **Simulated Annealing** — for rugged parameter landscapes
-- **Nelder-Mead Simplex** — derivative-free optimization
-- **Reverse Monte Carlo** / **Meta-Dynamics**
-- **Parallel computation** support (multi-core & XGrid distributed)
-
-### Texture Analysis
-- **WIMV** (Williams-Imhof-Matthies-Vinel)
-- **EWIMV** (Entropy-Weighted WIMV)
-- **Harmonic** method (including Van Houtte exponential form for ODF positivity)
-- **Standard Functions** (fiber & spherical components, Beartex-compatible)
-- **March-Dollase** model
-- **MTEX** integration (calls MTEX binaries directly, no Matlab required)
-- ODF import/export with Beartex, PopLA, GSAS
-
-### Microstructure Modeling
-- Crystallite size & microstrain (isotropic & anisotropic via Popa model)
-- Distributions of crystallite sizes and microstrains
-- Warren-Averbach Fourier analysis
-- Antiphase boundaries, planar defects (Warren model, single-layer Ufer model)
-- Modulated turbostratic structures (clays, graphite)
-- Single-chain polymer disorder models
-
-### Structure Solution (SDPD)
-- Genetic Algorithm indexing (evolutionary smart indexing)
-- *Ab initio* structure solution via GA, SA, Reverse Monte Carlo
-- Charge Flipping (Superflip integration)
-- Maximum Entropy Method (MEM) for Fourier maps
-- Neural Network based indexing
-- DICVOL91 integration
-- Le Bail and Pawley intensity extraction
-
-### X-ray Fluorescence
-- Quantitative XRF with matrix correction
-- EDXRF and TXRF support
-- Simultaneous XRF + diffraction refinement
-- GIXRF (Grazing-Incidence XRF) coupled with reflectivity
-- M and N line support for heavy elements
+| 变更 | 路径 | 说明 |
+|------|------|------|
+| maud_mcp Python 包 | `src/maud_mcp/` | 完整的 MCP 服务器 (core/server/ai/tests) |
+| Java 桥接 | `src/maud_mcp/core/java_bridge.py` | subprocess 调用 MAUD.jar |
+| PAR 编辑器 | `src/maud_mcp/core/par_editor.py` | CIF 格式 .par 文件的完整解析/编辑 |
+| 数据管理器 | `src/maud_mcp/core/data_manager.py` | 格式转换 + CIF 解析 |
+| 结果解析器 | `src/maud_mcp/core/result_parser.py` | Rwp/GOF/晶胞参数提取 |
+| AI 诊断 | `src/maud_mcp/ai/` | 参数推荐、诊断、报告生成 |
+| MCP 服务器 | `src/maud_mcp/server/mcp_server.py` | 12+ 个 MCP 工具 |
+| 测试套件 | `src/maud_mcp/tests/` | 64 个测试全部通过 |
+| 运行时 | `maud_runtime/` | Maud.jar + 35 个依赖 JAR |
+| 重命名 | — | maud → MAUD-MCP |
 
 ---
 
-## References
+## 测试 / Testing
 
-**Combined Analysis:**
-- Lutterotti, L. et al. "Combined analysis of diffraction, fluorescence and reflectivity data", *IUCrJ* (in preparation)
-- Lutterotti, L. "Total pattern fitting for the combined size–strain–stress–texture determination in thin film diffraction", *Nucl. Instr. Meth. B*, 268, 334–340 (2010)
+```bash
+cd /path/to/MAUD-MCP
 
-**RITA / Texture:**
-- Wenk, H.-R., Matthies, S. & Lutterotti, L. "Texture analysis from diffraction spectra", *Mater. Sci. Forum*, 157-162, 473-480 (1994)
-- Matthies, S., Lutterotti, L. & Wenk, H.-R. "Advances in Texture Analysis from Diffraction Spectra", *J. Appl. Cryst.*, 30, 31-42 (1997)
+# 全部 64 个测试
+python -m pytest src/maud_mcp/tests/ -v
 
-**RISTA / Stress:**
-- Ferrari, M. & Lutterotti, L. "Method for the simultaneous determination of anisotropic residual stresses and texture by X-ray diffraction", *J. Appl. Phys.*, 76(11), 7246-55 (1994)
+# 按模块
+python -m pytest src/maud_mcp/tests/test_java_bridge.py -v    # 7 tests
+python -m pytest src/maud_mcp/tests/test_par_editor.py -v     # 20 tests
+python -m pytest src/maud_mcp/tests/test_result_parser.py -v  # 12 tests
+python -m pytest src/maud_mcp/tests/test_data_manager.py -v   # 6 tests
+python -m pytest src/maud_mcp/tests/test_mcp_server.py -v     # 11 tests
+python -m pytest src/maud_mcp/tests/test_ai_modules.py -v     # 8 tests
+```
 
-**Microstructure:**
-- Lutterotti, L. & Scardi, P. "Simultaneous Structure and Size-Strain Refinement by the Rietveld Method", *J. Appl. Cryst.*, 23, 246-252 (1990)
+测试输出示例：
+```
+64 passed in 32.85s  ✅
+```
 
 ---
 
-## License
+## 相关项目 / Related Projects
 
-BSD 3-Clause License. See [LICENSE](./LICENSE).
+| 项目 | 说明 | 仓库 |
+|------|------|------|
+| **GSAS2-MCP** | GSAS-II Rietveld 精修 MCP 服务器 | [XRDFPSR/GSAS2-MCP](https://github.com/XRDFPSR/GSAS2-MCP) |
+| **FullProf-MCP** | FullProf Rietveld 精修 MCP 服务器 | [XRDFPSR/fullprof-app](https://github.com/XRDFPSR/fullprof-app) |
+| **Profex-MCP** | Profex/BGMN XRD 分析 MCP 服务器 | [XRDFPSR/Profex-MCP](https://github.com/XRDFPSR/Profex-MCP) |
 
 ---
 
-## Contributing
+## 许可证 / License
 
-The upstream repository is at [github.com/luttero/maud](https://github.com/luttero/maud). For contributions, bug reports, or questions, contact:
+**BSD 3-Clause License**（与上游 MAUD 一致）
 
-- **Luca Lutterotti** — luca.lutterotti@unitn.it
-- MAUD website: [http://maud.radiographema.com/](http://maud.radiographema.com/)
+本仓库是 [luttero/maud](https://github.com/luttero/maud) 的 fork，所有上游贡献者的版权均保留。
+
+---
+
+## 致谢 / Acknowledgements
+
+- **Luca Lutterotti** — MAUD 作者，University of Trento
+- **Ralph T. Downs** — Rietveld 方法奠基人
+- **Advanced Photon Source / Argonne National Lab** — GSAS-II 开发团队
+- **Bruker AXS / Rigaku / PANalytical** — XRD 数据格式标准
+
+---
+
+*MAUD 主页: https://maud.radiographema.com*
+*MAUD 上游仓库: https://github.com/luttero/maud*
